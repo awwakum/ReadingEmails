@@ -1,3 +1,6 @@
+/**
+ * Created by acvetkov on 07.03.2016.
+ */
 import microsoft.exchange.webservices.data.autodiscover.IAutodiscoverRedirectionUrl;
 import microsoft.exchange.webservices.data.core.ExchangeService;
 import microsoft.exchange.webservices.data.core.PropertySet;
@@ -5,13 +8,15 @@ import microsoft.exchange.webservices.data.core.enumeration.misc.ExchangeVersion
 import microsoft.exchange.webservices.data.core.enumeration.property.BasePropertySet;
 import microsoft.exchange.webservices.data.core.enumeration.property.BodyType;
 import microsoft.exchange.webservices.data.core.enumeration.property.WellKnownFolderName;
+import microsoft.exchange.webservices.data.core.enumeration.search.SortDirection;
 import microsoft.exchange.webservices.data.core.enumeration.service.DeleteMode;
 import microsoft.exchange.webservices.data.core.service.folder.Folder;
-import microsoft.exchange.webservices.data.core.service.item.Appointment;
 import microsoft.exchange.webservices.data.core.service.item.EmailMessage;
 import microsoft.exchange.webservices.data.core.service.item.Item;
+import microsoft.exchange.webservices.data.core.service.schema.ItemSchema;
 import microsoft.exchange.webservices.data.credential.ExchangeCredentials;
 import microsoft.exchange.webservices.data.credential.WebCredentials;
+import microsoft.exchange.webservices.data.property.complex.FolderId;
 import microsoft.exchange.webservices.data.property.complex.ItemId;
 import microsoft.exchange.webservices.data.search.FindFoldersResults;
 import microsoft.exchange.webservices.data.search.FindItemsResults;
@@ -20,12 +25,12 @@ import microsoft.exchange.webservices.data.search.ItemView;
 import microsoft.exchange.webservices.data.search.filter.SearchFilter;
 
 import java.io.Console;
-import java.util.Arrays;
-import java.util.Scanner;
-
+import java.text.SimpleDateFormat;
+import java.util.*;
 
 public class Main {
 
+    // allow Autodiscover to follow the redirection
     static class RedirectionUrlCallback implements IAutodiscoverRedirectionUrl {
         public boolean autodiscoverRedirectionUrlValidationCallback(
                 String redirectionUrl) {
@@ -33,11 +38,19 @@ public class Main {
         }
     }
 
+    // format date
+    public static String editDate(Date date) {
+        SimpleDateFormat simpleDate = new SimpleDateFormat("dd.MM.YYYY");
+        return simpleDate.format(date);
+    }
+
     public static void main(String[] args) throws Exception {
 
         Scanner in = new Scanner(System.in);
         System.out.print("Password: ");
         String pass = in.nextLine();
+
+        /* run from console */
         /*String pass = "";
         try {
             pass = new String(System.console().readPassword("Password: "));
@@ -53,31 +66,49 @@ public class Main {
         //service.setUrl(uri);
         service.autodiscoverUrl("Alexander.Cvetkov@md.de", new RedirectionUrlCallback());
 
-        Folder inbox = Folder.bind(service, WellKnownFolderName.Inbox);
-
-        ItemView view = new ItemView(3);
-
-        FindItemsResults<Item> findResults = service.findItems(inbox.getId(), view);
-        for (Item item : findResults.getItems()) {
-            System.out.println("id  : " + item.getId());
-            System.out.println("sub : " + item.getSubject());
-        }
-
         // find all child folders of the inbox folder
         FindFoldersResults findFoldersResults = service.findFolders(WellKnownFolderName.Inbox, new FolderView(Integer.MAX_VALUE));
+        System.out.println("\nChild folders of the inbox folder: ");
         for (Folder folder : findFoldersResults.getFolders()) {
             System.out.println("Count = " + folder.getChildFolderCount());
             System.out.println("Name  = " + folder.getDisplayName());
             System.out.println("ID    = " + folder.getId());
         }
 
-        //folder.delete(DeleteMode.HardDelete);
+        Folder testFolder = Folder.bind(service, new FolderId("AAMkADljN2IwZDM2LWVhNWUtNDgzNi05YmE0LTZiOTQzMDhjYjA4ZgAuAAAAAAA4FlhziwSnQ51C62KpVWnkAQB5cYD3J63WTZwpPyMN8yhDAAAEqpRrAAA="));
+        System.out.println("\nEmails in " + testFolder.getDisplayName());
 
-        EmailMessage message = EmailMessage.bind(service, new ItemId("AAMkADljN2IwZDM2LWVhNWUtNDgzNi05YmE0LTZiOTQzMDhjYjA4ZgBGAAAAAAA4FlhziwSnQ51C62KpVWnkBwB5cYD3J63WTZwpPyMN8yhDAAAA1TOBAAB5cYD3J63WTZwpPyMN8yhDAAAEqnOOAAA="));
+        ItemView view = new ItemView(Integer.MAX_VALUE);
+        view.getOrderBy().add(ItemSchema.DateTimeReceived, SortDirection.Ascending);
 
-        PropertySet itemPropertySet = new PropertySet(BasePropertySet.FirstClassProperties);
-        itemPropertySet.setRequestedBodyType(BodyType.Text);
-        String body = message.getBody().toString();
-        System.out.println(body);
+        SortedSet<Machine> machinesSet = new TreeSet<>();
+
+        FindItemsResults<Item> findResults = service.findItems(testFolder.getId(), view);
+        for (Item item : findResults.getItems()) {
+            EmailMessage message = EmailMessage.bind(service, new ItemId(item.getId().toString()));
+            PropertySet itemPropertySet = new PropertySet(BasePropertySet.FirstClassProperties);
+            itemPropertySet.setRequestedBodyType(BodyType.Text);
+
+            String messageBody = message.getBody().toString();
+            String date = editDate(item.getDateTimeReceived());
+            String machineName = item.getSubject().substring(32);
+            String value = "";
+
+            System.out.print(date + "\t" + machineName + "\t");
+            int position = messageBody.indexOf("Per Second");
+            if (position != -1) {
+                value = messageBody.substring(position + 20, position + 25).replace("<", "");
+                System.out.println(value);
+            }
+            else System.out.println("");
+
+            machinesSet.add(new Machine(machineName, date, value));
+        }
+
+        Iterator it = machinesSet.iterator();
+        while(it.hasNext()) {
+            Machine machine = (Machine) it.next();
+            System.out.println(machine.getName());
+        }
     }
 }
