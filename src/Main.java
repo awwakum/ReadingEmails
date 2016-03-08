@@ -1,6 +1,4 @@
-/**
- * Created by acvetkov on 07.03.2016.
- */
+import com.opencsv.CSVReader;
 import com.opencsv.CSVWriter;
 import microsoft.exchange.webservices.data.autodiscover.IAutodiscoverRedirectionUrl;
 import microsoft.exchange.webservices.data.core.ExchangeService;
@@ -23,12 +21,8 @@ import microsoft.exchange.webservices.data.search.FindFoldersResults;
 import microsoft.exchange.webservices.data.search.FindItemsResults;
 import microsoft.exchange.webservices.data.search.FolderView;
 import microsoft.exchange.webservices.data.search.ItemView;
-import microsoft.exchange.webservices.data.search.filter.SearchFilter;
 
-import java.io.Console;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.lang.reflect.Array;
+import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -48,7 +42,8 @@ public class Main {
         return simpleDate.format(date);
     }
 
-    public static void writeCSVFile(SortedSet dateSet, Machine[] machinesArray) throws Exception {
+    /* write to .csv file */
+    public static void writeCSVFile(SortedSet<String> dateSet, Machine[] machinesArray) throws Exception {
 
         CSVWriter writer = new CSVWriter(new FileWriter("test.csv"), ';', CSVWriter.NO_QUOTE_CHARACTER);
         String[] record = "date,p14,p31,p32".split(",");
@@ -56,11 +51,12 @@ public class Main {
 
         Iterator<String> it = dateSet.iterator();
         while (it.hasNext()) {
-
-            String str = it.next() + "#";
+            String date = it.next();
+            String str = date + "#";
 
             for (Machine machine : machinesArray) {
-                str += machine.getValueByKey(it.next());
+                /*System.out.println("Send getValueByKey with: " + date);*/
+                str += machine.getValueByKey(date);
                 str += "#";
             }
 
@@ -69,6 +65,20 @@ public class Main {
         }
 
         writer.close();
+    }
+
+    /* read the last date line in .csv file */
+    public static String readCSVFile(String file) throws IOException {
+        CSVReader reader = new CSVReader(new FileReader(file), ';');
+        String[] nextLine;
+        String lastDate = "";
+        while ((nextLine = reader.readNext()) != null) {
+            if (reader.readNext() == null) {
+                lastDate = nextLine[0];
+                break;
+            }
+        }
+        return lastDate;
     }
 
     public static void main(String[] args) throws Exception {
@@ -86,29 +96,29 @@ public class Main {
             System.exit(1);
         }*/
 
+        /* login part */
         ExchangeService service = new ExchangeService(ExchangeVersion.Exchange2010_SP2);
         ExchangeCredentials credentials = new WebCredentials("acvetkov", pass);
         service.setCredentials(credentials);
-        //URI uri = URI.create ("https://access.freenet-group.de");
-        //service.setUrl(uri);
         service.autodiscoverUrl("Alexander.Cvetkov@md.de", new RedirectionUrlCallback());
 
-        // find all child folders of the inbox folder
+        /* find all child folders of the inbox folder */
         FindFoldersResults findFoldersResults = service.findFolders(WellKnownFolderName.Inbox, new FolderView(Integer.MAX_VALUE));
         System.out.println("\nChild folders of the inbox folder: ");
         for (Folder folder : findFoldersResults.getFolders()) {
-            System.out.println("Count = " + folder.getChildFolderCount());
             System.out.println("Name  = " + folder.getDisplayName());
             System.out.println("ID    = " + folder.getId());
+            System.out.println("Count = " + folder.getChildFolderCount());
         }
 
+        /* bind to test folder */
         Folder testFolder = Folder.bind(service, new FolderId("AAMkADljN2IwZDM2LWVhNWUtNDgzNi05YmE0LTZiOTQzMDhjYjA4ZgAuAAAAAAA4FlhziwSnQ51C62KpVWnkAQB5cYD3J63WTZwpPyMN8yhDAAAEqpRrAAA="));
         System.out.println("\nEmails in " + testFolder.getDisplayName());
 
+        /* all messages in folder, date ascending sorted */
         ItemView view = new ItemView(Integer.MAX_VALUE);
         view.getOrderBy().add(ItemSchema.DateTimeReceived, SortDirection.Ascending);
 
-        //SortedSet<Machine> machinesSet = new TreeSet<>();
         Machine[] machinesArray = {new Machine("p14"), new Machine("p31"), new Machine("p32")};
         SortedSet<String> dateSet = new TreeSet<>();
 
@@ -119,7 +129,7 @@ public class Main {
             PropertySet itemPropertySet = new PropertySet(BasePropertySet.FirstClassProperties);
             itemPropertySet.setRequestedBodyType(BodyType.Text);
 
-            /* get from message body */
+            /* get values from message body */
             String machineName = item.getSubject().substring(32);
             /* we need only machines p14 p31 p32 */
             if(!machineName.equals("p14") && !machineName.equals("p31") && !machineName.equals("p32")) continue;
@@ -145,22 +155,12 @@ public class Main {
                     break;
             }
 
-            /*Machine machine = new Machine(machineName);
-            machinesSet.add(machine);
-            machine.setParams(date, value);*/
-
             /* add each date to dateSet */
             dateSet.add(date);
-        } // end for
+        } /* end for */
 
-        System.out.println("Machines in ascending order: ");
-        /*Iterator it = machinesSet.iterator();
-        while(it.hasNext()) {
-            Machine machine = (Machine) it.next();
-            System.out.println(machine.getName());
-            machine.getParams();
-            System.out.println("=========================");
-        }*/
+
+        System.out.println("\nMachines in ascending order: ");
         for (Machine machine : machinesArray) {
             System.out.println(machine.getName());
             machine.getAllParams();
