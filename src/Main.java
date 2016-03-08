@@ -1,6 +1,7 @@
 /**
  * Created by acvetkov on 07.03.2016.
  */
+import com.opencsv.CSVWriter;
 import microsoft.exchange.webservices.data.autodiscover.IAutodiscoverRedirectionUrl;
 import microsoft.exchange.webservices.data.core.ExchangeService;
 import microsoft.exchange.webservices.data.core.PropertySet;
@@ -25,6 +26,9 @@ import microsoft.exchange.webservices.data.search.ItemView;
 import microsoft.exchange.webservices.data.search.filter.SearchFilter;
 
 import java.io.Console;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.lang.reflect.Array;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -42,6 +46,29 @@ public class Main {
     public static String editDate(Date date) {
         SimpleDateFormat simpleDate = new SimpleDateFormat("dd.MM.YYYY");
         return simpleDate.format(date);
+    }
+
+    public static void writeCSVFile(SortedSet dateSet, Machine[] machinesArray) throws Exception {
+
+        CSVWriter writer = new CSVWriter(new FileWriter("test.csv"), ';', CSVWriter.NO_QUOTE_CHARACTER);
+        String[] record = "date,p14,p31,p32".split(",");
+        writer.writeNext(record);
+
+        Iterator<String> it = dateSet.iterator();
+        while (it.hasNext()) {
+
+            String str = it.next() + "#";
+
+            for (Machine machine : machinesArray) {
+                str += machine.getValueByKey(it.next());
+                str += "#";
+            }
+
+            record = str.split("#");
+            writer.writeNext(record);
+        }
+
+        writer.close();
     }
 
     public static void main(String[] args) throws Exception {
@@ -81,7 +108,10 @@ public class Main {
         ItemView view = new ItemView(Integer.MAX_VALUE);
         view.getOrderBy().add(ItemSchema.DateTimeReceived, SortDirection.Ascending);
 
-        SortedSet<Machine> machinesSet = new TreeSet<>();
+        //SortedSet<Machine> machinesSet = new TreeSet<>();
+        Machine[] machinesArray = {new Machine("p14"), new Machine("p31"), new Machine("p32")};
+        SortedSet<String> dateSet = new TreeSet<>();
+
 
         FindItemsResults<Item> findResults = service.findItems(testFolder.getId(), view);
         for (Item item : findResults.getItems()) {
@@ -89,9 +119,12 @@ public class Main {
             PropertySet itemPropertySet = new PropertySet(BasePropertySet.FirstClassProperties);
             itemPropertySet.setRequestedBodyType(BodyType.Text);
 
+            /* get from message body */
+            String machineName = item.getSubject().substring(32);
+            /* we need only machines p14 p31 p32 */
+            if(!machineName.equals("p14") && !machineName.equals("p31") && !machineName.equals("p32")) continue;
             String messageBody = message.getBody().toString();
             String date = editDate(item.getDateTimeReceived());
-            String machineName = item.getSubject().substring(32);
             String value = "";
 
             System.out.print(date + "\t" + machineName + "\t");
@@ -102,13 +135,37 @@ public class Main {
             }
             else System.out.println("");
 
-            machinesSet.add(new Machine(machineName, date, value));
-        }
+            /* add params to each machine */
+            switch (machineName) {
+                case "p14" : machinesArray[0].setParams(date, value);
+                    break;
+                case "p31" : machinesArray[1].setParams(date, value);
+                    break;
+                case "p32" : machinesArray[2].setParams(date, value);
+                    break;
+            }
 
-        Iterator it = machinesSet.iterator();
+            /*Machine machine = new Machine(machineName);
+            machinesSet.add(machine);
+            machine.setParams(date, value);*/
+
+            /* add each date to dateSet */
+            dateSet.add(date);
+        } // end for
+
+        System.out.println("Machines in ascending order: ");
+        /*Iterator it = machinesSet.iterator();
         while(it.hasNext()) {
             Machine machine = (Machine) it.next();
             System.out.println(machine.getName());
+            machine.getParams();
+            System.out.println("=========================");
+        }*/
+        for (Machine machine : machinesArray) {
+            System.out.println(machine.getName());
+            machine.getAllParams();
         }
+
+        writeCSVFile(dateSet, machinesArray);
     }
 }
