@@ -1,4 +1,3 @@
-import com.opencsv.CSVReader;
 import com.opencsv.CSVWriter;
 import microsoft.exchange.webservices.data.autodiscover.IAutodiscoverRedirectionUrl;
 import microsoft.exchange.webservices.data.core.ExchangeService;
@@ -8,10 +7,10 @@ import microsoft.exchange.webservices.data.core.enumeration.property.BasePropert
 import microsoft.exchange.webservices.data.core.enumeration.property.BodyType;
 import microsoft.exchange.webservices.data.core.enumeration.property.WellKnownFolderName;
 import microsoft.exchange.webservices.data.core.enumeration.search.SortDirection;
-import microsoft.exchange.webservices.data.core.enumeration.service.DeleteMode;
 import microsoft.exchange.webservices.data.core.service.folder.Folder;
 import microsoft.exchange.webservices.data.core.service.item.EmailMessage;
 import microsoft.exchange.webservices.data.core.service.item.Item;
+import microsoft.exchange.webservices.data.core.service.schema.FolderSchema;
 import microsoft.exchange.webservices.data.core.service.schema.ItemSchema;
 import microsoft.exchange.webservices.data.credential.ExchangeCredentials;
 import microsoft.exchange.webservices.data.credential.WebCredentials;
@@ -21,10 +20,17 @@ import microsoft.exchange.webservices.data.search.FindFoldersResults;
 import microsoft.exchange.webservices.data.search.FindItemsResults;
 import microsoft.exchange.webservices.data.search.FolderView;
 import microsoft.exchange.webservices.data.search.ItemView;
+import microsoft.exchange.webservices.data.search.filter.SearchFilter;
 
-import java.io.*;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.Date;
+import java.util.Properties;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 public class Main {
 
@@ -36,7 +42,7 @@ public class Main {
         }
     }
 
-    // format date
+    /* format date */
     public static String editDate(Date date) {
         SimpleDateFormat simpleDate = new SimpleDateFormat("dd.MM.YYYY");
         return simpleDate.format(date);
@@ -49,9 +55,7 @@ public class Main {
         String[] record = "date,p14,p31,p32".split(",");
         writer.writeNext(record);
 
-        Iterator<String> it = dateSet.iterator();
-        while (it.hasNext()) {
-            String date = it.next();
+        for (String date : dateSet) {
             String str = date + "#";
 
             for (Machine machine : machinesArray) {
@@ -68,7 +72,7 @@ public class Main {
     }
 
     /* read the last date line in .csv file */
-    public static String readCSVFile(String file) throws IOException {
+    /*public static String readCSVFile(String file) throws IOException {
         CSVReader reader = new CSVReader(new FileReader(file), ';');
         String[] nextLine;
         String lastDate = "";
@@ -79,13 +83,26 @@ public class Main {
             }
         }
         return lastDate;
+    }*/
+
+    /* read properties file */
+    public static Properties readPropertiesFile(String fileName) throws FileNotFoundException {
+        FileInputStream fis;
+        Properties prop;
+
+        fis = new FileInputStream(fileName);
+        prop = new Properties();
+
+        try {
+            prop.load(fis);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return prop;
     }
 
     public static void main(String[] args) throws Exception {
-
-        Scanner in = new Scanner(System.in);
-        System.out.print("Password: ");
-        String pass = in.nextLine();
 
         /* run from console */
         /*String pass = "";
@@ -96,24 +113,22 @@ public class Main {
             System.exit(1);
         }*/
 
+        Properties prop = readPropertiesFile("config.properties");
+
         /* login part */
         ExchangeService service = new ExchangeService(ExchangeVersion.Exchange2010_SP2);
-        ExchangeCredentials credentials = new WebCredentials("acvetkov", pass);
+        ExchangeCredentials credentials = new WebCredentials(prop.getProperty("user"), prop.getProperty("pass"));
         service.setCredentials(credentials);
-        service.autodiscoverUrl("Alexander.Cvetkov@md.de", new RedirectionUrlCallback());
+        service.autodiscoverUrl(prop.getProperty("url"), new RedirectionUrlCallback());
 
-        /* find all child folders of the inbox folder */
-        FindFoldersResults findFoldersResults = service.findFolders(WellKnownFolderName.Inbox, new FolderView(Integer.MAX_VALUE));
-        System.out.println("\nChild folders of the inbox folder: ");
-        for (Folder folder : findFoldersResults.getFolders()) {
-            System.out.println("Name  = " + folder.getDisplayName());
-            System.out.println("ID    = " + folder.getId());
-            System.out.println("Count = " + folder.getChildFolderCount());
-        }
+        /* find needed folder in the inbox folder */
+        SearchFilter.IsEqualTo filter = new SearchFilter.IsEqualTo(FolderSchema.DisplayName, prop.getProperty("folderName"));
+        FindFoldersResults findFoldersResults = service.findFolders(WellKnownFolderName.Inbox,
+                filter, new FolderView(Integer.MAX_VALUE));
+        String folderId = findFoldersResults.getFolders().get(0).getId().toString();
 
-        /* bind to test folder */
-        Folder testFolder = Folder.bind(service, new FolderId("AAMkADljN2IwZDM2LWVhNWUtNDgzNi05YmE0LTZiOTQzMDhjYjA4ZgAuAAAAAAA4FlhziwSnQ51C62KpVWnkAQB5cYD3J63WTZwpPyMN8yhDAAAEqpRrAAA="));
-        System.out.println("\nEmails in " + testFolder.getDisplayName());
+        /* bind to folder */
+        Folder testFolder = Folder.bind(service, new FolderId(folderId));
 
         /* all messages in folder, date ascending sorted */
         ItemView view = new ItemView(Integer.MAX_VALUE);
@@ -130,20 +145,28 @@ public class Main {
             itemPropertySet.setRequestedBodyType(BodyType.Text);
 
             /* get values from message body */
-            String machineName = item.getSubject().substring(32);
+            String machineName = "";
+            try {
+                machineName = item.getSubject().substring(32);
+            } catch (IndexOutOfBoundsException e) {
+                System.out.println(e);
+            }
+
             /* we need only machines p14 p31 p32 */
             if(!machineName.equals("p14") && !machineName.equals("p31") && !machineName.equals("p32")) continue;
+
             String messageBody = message.getBody().toString();
             String date = editDate(item.getDateTimeReceived());
-            String value = "";
+            /* add each date to dateSet */
+            dateSet.add(date);
+            String value;
 
-            System.out.print(date + "\t" + machineName + "\t");
-            int position = messageBody.indexOf("Per Second");
-            if (position != -1) {
-                value = messageBody.substring(position + 20, position + 25).replace("<", "");
-                System.out.println(value);
-            }
-            else System.out.println("");
+            //System.out.print(date + "\t" + machineName + "\t");
+            int beginIndex = messageBody.indexOf("Per Second");
+            int endIndex = messageBody.indexOf("Remaining");
+            if (beginIndex != -1) {
+                value = messageBody.substring(beginIndex, endIndex).replaceAll("[^\\d,]+|\\.(?!\\d)", "");
+            } else continue;
 
             /* add params to each machine */
             switch (machineName) {
@@ -155,16 +178,13 @@ public class Main {
                     break;
             }
 
-            /* add each date to dateSet */
-            dateSet.add(date);
         } /* end for */
 
-
-        System.out.println("\nMachines in ascending order: ");
+        /*System.out.println("\nMachines in ascending order: ");
         for (Machine machine : machinesArray) {
             System.out.println(machine.getName());
             machine.getAllParams();
-        }
+        }*/
 
         writeCSVFile(dateSet, machinesArray);
     }
