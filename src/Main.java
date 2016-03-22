@@ -31,11 +31,15 @@ import java.util.Date;
 import java.util.Properties;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Main {
 
+    private static Pattern pattern =  Pattern.compile("([\\d]{0,5},[\\d]{0,2})");
+
     // allow Autodiscover to follow the redirection
-    static class RedirectionUrlCallback implements IAutodiscoverRedirectionUrl {
+    private static class RedirectionUrlCallback implements IAutodiscoverRedirectionUrl {
         public boolean autodiscoverRedirectionUrlValidationCallback(
                 String redirectionUrl) {
             return redirectionUrl.toLowerCase().startsWith("https://");
@@ -43,13 +47,13 @@ public class Main {
     }
 
     /* format date */
-    public static String editDate(Date date) {
+    private static String editDate(Date date) {
         SimpleDateFormat simpleDate = new SimpleDateFormat("dd.MM.YYYY");
         return simpleDate.format(date);
     }
 
     /* write to .csv file */
-    public static void writeCSVFile(SortedSet<String> dateSet, Machine[] machinesArray) throws Exception {
+    private static void writeCSVFile(SortedSet<String> dateSet, Machine[] machinesArray) throws Exception {
 
         CSVWriter writer = new CSVWriter(new FileWriter("test.csv"), ';', CSVWriter.NO_QUOTE_CHARACTER);
         String[] record = "date,p14,p31,p32".split(",");
@@ -86,7 +90,7 @@ public class Main {
     }*/
 
     /* read properties file */
-    public static Properties readPropertiesFile(String fileName) throws FileNotFoundException {
+    private static Properties readPropertiesFile(String fileName) throws FileNotFoundException {
         FileInputStream fis;
         Properties prop;
 
@@ -161,11 +165,17 @@ public class Main {
             dateSet.add(date);
             String value;
 
-            //System.out.print(date + "\t" + machineName + "\t");
             int beginIndex = messageBody.indexOf("Per Second");
             int endIndex = messageBody.indexOf("Remaining");
+
             if (beginIndex != -1) {
-                value = messageBody.substring(beginIndex, endIndex).replaceAll("[^\\d,]+|\\.(?!\\d)", "");
+                Matcher matcher = pattern.matcher( messageBody.substring(beginIndex, endIndex));
+                if(matcher.find()){
+                    value = matcher.group();
+                }
+                else {
+                    value=null;
+                }
             } else continue;
 
             /* add params to each machine */
@@ -177,7 +187,6 @@ public class Main {
                 case "p32" : machinesArray[2].setParams(date, value);
                     break;
             }
-
         } /* end for */
 
         /*System.out.println("\nMachines in ascending order: ");
